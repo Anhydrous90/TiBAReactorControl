@@ -14,7 +14,10 @@
 #include <Controllino.h>
 #include <pt.h>
 #include "ReactorClass.h"
+#include <Stepper.h>
 
+const int stepsPerRevolution = 200;  // change this to fit the number of steps per revolution
+// for your motor
 
 
 
@@ -25,7 +28,7 @@
 #define C2F(c) ((9 * c / 5) + 32)
 #define Base 0
 
-#define R1ChillPinSupply = CONTROLLINO_R10;
+#define ArgonOn = CONTROLLINO_R10;
 #define R2ChillPinSupply = CONTROLLINO_R12;
 #define R3ChillPinSupply = CONTROLLINO_R14;
 #define R1HeatPinSupply = CONTROLLINO_R11;
@@ -42,6 +45,10 @@
 #define R3ArgonOnPin = CONTROLLINO_R8;
 
 
+// initialize the Stepper library on pins 8 through 11:
+Stepper myStepper(stepsPerRevolution, 8, 9, 10, 11);
+
+int stepCount = 0;  // number of steps the motor has taken
 
 
 String endChar = (String(char(0xff)) + String(char(0xff)) + String(char(0xff)));
@@ -73,16 +80,13 @@ unsigned long time = 0;
 
 //Temp Object Constructor
 Adafruit_MAX31865 max31865A = Adafruit_MAX31865(CONTROLLINO_D15);
-Adafruit_MAX31865 max31865B = Adafruit_MAX31865(CONTROLLINO_D14);
-Adafruit_MAX31865 max31865C = Adafruit_MAX31865(CONTROLLINO_D13);
+
 
 //Reactor Object Constructor
 ReactorClass R1(CONTROLLINO_R10, CONTROLLINO_R11, CONTROLLINO_R0, CONTROLLINO_R1, "R1",CONTROLLINO_R6);
-ReactorClass R2(CONTROLLINO_R12, CONTROLLINO_R13, CONTROLLINO_R2, CONTROLLINO_R3, "R2", CONTROLLINO_R7);
-ReactorClass R3(CONTROLLINO_R14, CONTROLLINO_R15, CONTROLLINO_R4, CONTROLLINO_R5, "R3", CONTROLLINO_R8);
 
 
-static struct pt ptR1, ptR2, ptR3, ptR1Wash,ptR2Wash,ptR3Wash; // p objects 1,2,3
+
 
 // NOTE : Initial Async Delay
 unsigned	long initDelayLong = 1000;
@@ -106,23 +110,13 @@ void setup() {
 
     //Reactor Object Initialization
     R1.init(0, R1ChillPic, R1HeatPic, R1IdlePic);
-    R2.init(0, R2ChillPic, R2HeatPic, R2IdlePic);
-    R3.init(0, R3ChillPic, R3HeatPic, R3IdlePic);
+   
 
     //Temperature Initialization
     max31865A.begin(MAX31865_3WIRE);
     delay(10);
-    max31865B.begin(MAX31865_4WIRE);
-    delay(10);
-    max31865C.begin(MAX31865_4WIRE);
 
-    //Protothread initialization
-    PT_INIT(&ptR1);
-    PT_INIT(&ptR1Wash);
-    PT_INIT(&ptR2);
-    PT_INIT(&ptR2Wash);
-    PT_INIT(&ptR3);
-    PT_INIT(&ptR3Wash);
+
 
 
 
@@ -138,7 +132,15 @@ void setup() {
 }
 
 void loop() {
-
+     int sensorReading = analogRead(A0);
+  // map it to a range from 0 to 100:
+  int motorSpeed = map(sensorReading, 0, 1023, 0, 100);
+  // set the motor speed:
+  if (motorSpeed > 0) {
+    myStepper.setSpeed(motorSpeed);
+    // step 1/100 of a revolution:
+    myStepper.step(stepsPerRevolution / 100);
+  }
 
     if (Serial2.available()) {
         serialInput();
@@ -148,25 +150,17 @@ void loop() {
     if (millis() > initDelayLong) {
         initDelayLong += initDelayLength;
         gettempR1();
-        gettempR2();
-        gettempR3();
+     
         
         R1.ControlDirection("R1");
 
-        R2.ControlDirection("R2");
-
-        R3.ControlDirection("R3");
 
         sendTemps();
 
         currentMillis = millis();
 
-        protothreadR1(&ptR1, RxnDuration);// schedule the three protothreads
-        protothreadR2(&ptR2, RxnDuration);
-        protothreadR3(&ptR3, RxnDuration);
-        WashCycleR1(&ptR1Wash);// schedule the three protothreads
-        WashCycleR2(&ptR2Wash);
-        WashCycleR3(&ptR3Wash);
+     
+      
     }
 
    
